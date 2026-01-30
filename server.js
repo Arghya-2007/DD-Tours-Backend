@@ -36,7 +36,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      "https://dd-tours-travels-admin.vercel.app",
+      "https://dd-tours-admin.vercel.app",
       "http://localhost:5175",
     ],
     credentials: true,
