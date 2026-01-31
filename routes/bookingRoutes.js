@@ -1,7 +1,9 @@
 // routes/bookingRoutes.js
 const express = require("express");
 const router = express.Router();
-const verifyAdmin = require("../middleware/authMiddleware");
+
+const { verifyUser, verifyAdmin } = require("../middleware/authMiddleware");
+
 const {
   createBooking,
   getAllBookings,
@@ -9,14 +11,16 @@ const {
   getUserBookings,
 } = require("../controllers/bookingController");
 
-// --- User Routes ---
-// Ideally, verifyAdmin should be renamed to verifyToken for users,
-// but for now, we use it to ensure they are logged in.
-router.post("/book", verifyAdmin, createBooking);
-router.get("/user/:userId", verifyAdmin, getUserBookings);
+// --- USER ROUTES (Customers) ---
+router.post("/book", verifyUser, createBooking);
 
-// --- Admin Routes ---
+// Users can only see THEIR OWN bookings
+router.get("/user/:userId", verifyUser, getUserBookings);
+
+// --- ADMIN ROUTES (DD Tours Management) ---
 router.get("/all", verifyAdmin, getAllBookings);
+
+// Only ADMIN can approve/reject bookings
 router.put("/status/:id", verifyAdmin, updateBookingStatus);
 
 module.exports = router;

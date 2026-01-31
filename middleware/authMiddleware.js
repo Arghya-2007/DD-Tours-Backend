@@ -29,4 +29,21 @@ const verifyAdmin = (req, res, next) => {
   }
 };
 
-module.exports = verifyAdmin;
+const verifyUser = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) {
+      return res
+        .status(401)
+        .json({ message: "Access Denied. No token provided." });
+    }
+
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.user = decodedToken; // Add user info to the request
+    next(); // Pass to the next function
+  } catch (error) {
+    res.status(401).json({ message: "Invalid Token" });
+  }
+};
+
+module.exports = { verifyAdmin, verifyUser };
