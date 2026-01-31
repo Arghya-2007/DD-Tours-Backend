@@ -1,38 +1,36 @@
+// routes/bookingRoutes.js
 const express = require("express");
 const router = express.Router();
 
-// Import Middleware
+// Middleware
 const { verifyUser, verifyAdmin } = require("../middleware/authMiddleware");
 
-// Import Controllers
+// Controller
 const {
   createBooking,
+  getUserBookings,
   getAllBookings,
   updateBookingStatus,
-  getUserBookings,
 } = require("../controllers/bookingController");
 
-// ==========================================
-// USER ROUTES (Customers)
-// ==========================================
+// --- CUSTOMER ROUTES ---
 
-// Create a new booking
-// Route: POST /api/bookings/book
+// POST /api/bookings/book
+// Creates a booking. Requires Login.
 router.post("/book", verifyUser, createBooking);
 
-// Route: GET /api/bookings/mine
+// GET /api/bookings/mine
+// Gets logged-in user's history. Requires Login.
 router.get("/mine", verifyUser, getUserBookings);
 
-// ==========================================
-// ADMIN ROUTES (DD Tours Management)
-// ==========================================
+// --- ADMIN ROUTES ---
 
-// Get ALL bookings (Master List)
-// Route: GET /api/bookings/all
+// GET /api/bookings/all
+// Gets master list of bookings. Requires Admin Token.
 router.get("/all", verifyAdmin, getAllBookings);
 
-// Approve or Reject a booking
-// Route: PUT /api/bookings/status/:id
+// PUT /api/bookings/status/:id
+// Updates booking status (Approved/Rejected). Requires Admin Token.
 router.put("/status/:id", verifyAdmin, updateBookingStatus);
 
 module.exports = router;

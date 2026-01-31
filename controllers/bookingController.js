@@ -1,142 +1,154 @@
-// Import the initialized Firestore instance
-// Make sure this points to where you initialized 'admin.firestore()'
+// controllers/bookingController.js
 const { db } = require("../config/firebase");
 
 // ==========================================
-// 1. CREATE BOOKING
+// 1. CREATE BOOKING (User)
 // ==========================================
-const createBooking = async (req, res, next) => {
+const createBooking = async (req, res) => {
   try {
-    // We create a reference to the 'bookings' collection
-    // Note: Firebase generates the ID automatically with .add()
+    const uid = req.user.uid; // Secured by verifyUser middleware
+    const { tripId, seats, userDetails } = req.body;
 
-    const bookingData = {
-      ...req.body,
-      // Store the User ID from the token so we know who booked it
-      // Firebase Auth tokens usually store the ID in 'uid'
-      userId: req.user.uid,
-      createdAt: new Date().toISOString(),
-      status: "pending", // Default status
-    };
-
-    const docRef = await db.collection("bookings").add(bookingData);
-
-    res.status(201).json({
-      success: true,
-      message: "Tour booked successfully!",
-      id: docRef.id, // Return the Firestore generated ID
-      data: bookingData,
-    });
-  } catch (err) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create booking",
-        error: err.message,
-      });
-  }
-};
-
-// ==========================================
-// 2. GET USER BOOKINGS (SECURE)
-// ==========================================
-const getUserBookings = async (req, res, next) => {
-  try {
-    const userId = req.user.uid;
-
-    // Query Firestore: "Select * from bookings where userId == [current_user]"
-    const bookingsSnapshot = await db
-      .collection("bookings")
-      .where("userId", "==", userId)
-      .get();
-
-    // Map through the docs to create a clean array
-    const bookings = [];
-    bookingsSnapshot.forEach((doc) => {
-      bookings.push({ id: doc.id, ...doc.data() });
-    });
-
-    res.status(200).json({
-      success: true,
-      count: bookings.length,
-      data: bookings,
-    });
-  } catch (err) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch bookings",
-        error: err.message,
-      });
-  }
-};
-
-// ==========================================
-// 3. GET ALL BOOKINGS (ADMIN ONLY)
-// ==========================================
-const getAllBookings = async (req, res, next) => {
-  try {
-    const bookingsSnapshot = await db.collection("bookings").get();
-
-    const bookings = [];
-    bookingsSnapshot.forEach((doc) => {
-      bookings.push({ id: doc.id, ...doc.data() });
-    });
-
-    res.status(200).json({
-      success: true,
-      count: bookings.length,
-      data: bookings,
-    });
-  } catch (err) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch all bookings",
-        error: err.message,
-      });
-  }
-};
-
-// ==========================================
-// 4. UPDATE BOOKING STATUS (ADMIN ONLY)
-// ==========================================
-const updateBookingStatus = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body; // e.g., "Approved"
-
-    // Reference the specific document
-    const bookingRef = db.collection("bookings").doc(id);
-
-    // Check if it exists first
-    const doc = await bookingRef.get();
-    if (!doc.exists) {
+    if (!tripId || !seats) {
       return res
-        .status(404)
-        .json({ success: false, message: "Booking not found" });
+        .status(400)
+        .json({ message: "Trip ID and Number of Seats are required." });
     }
 
-    // Update only the status field
-    await bookingRef.update({ status: status });
+    // 1. Fetch Trip details to ensure it exists and get valid Price
+    const tripRef = db.collection("trips").doc(tripId);
+    const tripDoc = await tripRef.get();
+
+    if (!tripDoc.exists) {
+      return res.status(404).json({ message: "Trip not found." });
+    }
+
+    const tripData = tripDoc.data();
+
+    // 2. Calculate Total Price (Server-side calculation is safer)
+    const pricePerPerson = Number(tripData.price);
+    const totalAmount = pricePerPerson * Number(seats);
+
+    // 3. Construct Booking Object
+    const newBooking = {
+      userId: uid,
+      tripId: tripId,
+      tripTitle: tripData.title, // Snapshot title in case it changes later
+      tripDate: tripData.expectedDate || "TBD",
+      seats: Number(seats),
+      totalPrice: totalAmount,
+      userDetails: userDetails || {}, // Name, Phone sent from frontend form
+      status: "pending", // Default status
+      createdAt: new Date().toISOString(),
+    };
+
+    // 4. Save to 'bookings' collection
+    const docRef = await db.collection("bookings").add(newBooking);
+
+    res.status(201).json({
+      message: "Booking created successfully!",
+      id: docRef.id,
+      data: newBooking,
+    });
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    res.status(500).json({
+      message: "Failed to create booking",
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================
+// 2. GET MY BOOKINGS (User)
+// ==========================================
+const getUserBookings = async (req, res) => {
+  try {
+    const uid = req.user.uid;
+
+    // Query: "Select * from bookings where userId == [current_user]"
+    const snapshot = await db
+      .collection("bookings")
+      .where("userId", "==", uid)
+      .orderBy("createdAt", "desc") // Show newest first
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(200).json([]);
+    }
+
+    const bookings = [];
+    snapshot.forEach((doc) => {
+      bookings.push({ id: doc.id, ...doc.data() });
+    });
+
+    res.status(200).json(bookings);
+  } catch (error) {
+    console.error("Error fetching user bookings:", error);
+    res.status(500).json({
+      message: "Failed to fetch bookings",
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================
+// 3. GET ALL BOOKINGS (Admin)
+// ==========================================
+const getAllBookings = async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("bookings")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const bookings = [];
+    snapshot.forEach((doc) => {
+      bookings.push({ id: doc.id, ...doc.data() });
+    });
+
+    res.status(200).json(bookings);
+  } catch (error) {
+    console.error("Error fetching all bookings:", error);
+    res.status(500).json({
+      message: "Failed to fetch all bookings",
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================
+// 4. UPDATE BOOKING STATUS (Admin)
+// ==========================================
+const updateBookingStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // e.g., "confirmed", "cancelled"
+
+    if (!status) {
+      return res.status(400).json({ message: "Status is required." });
+    }
+
+    const bookingRef = db.collection("bookings").doc(id);
+    const doc = await bookingRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    await bookingRef.update({ status });
 
     res.status(200).json({
-      success: true,
       message: `Booking status updated to ${status}`,
-      // We return the ID and the new status
-      data: { id, status },
+      id: id,
+      status: status,
     });
-  } catch (err) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update status",
-        error: err.message,
-      });
+  } catch (error) {
+    console.error("Error updating booking status:", error);
+    res.status(500).json({
+      message: "Failed to update status",
+      error: error.message,
+    });
   }
 };
 
