@@ -37,6 +37,7 @@ app.use(
       "http://localhost:5174", // Customer Local
       "http://localhost:5175", // (Just in case)
       "https://dd-tours-admin.vercel.app", // Admin Live
+      "https://dd-customers.vercel.app",
       // Add your Customer Vercel URL here later!
     ],
     credentials: true,
