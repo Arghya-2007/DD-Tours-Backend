@@ -4,21 +4,20 @@ const dotenv = require("dotenv");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
+// --- IMPORTS ---
 const adminRoutes = require("./routes/adminRoutes");
 const tripRoutes = require("./routes/tripRoutes");
 const userRoutes = require("./routes/userRoutes");
+const bookingRoutes = require("./routes/bookingRoutes"); // <--- ADD THIS BACK
 
 dotenv.config();
 
 const app = express();
 
 // --- SECURITY MIDDLEWARE ---
-
-// 1. Helmet: Sets security headers
 app.use(helmet());
 
-// 2. General Rate Limiter
-// Limits all requests to 100 per 15 minutes to prevent crashing
+// General Rate Limiter
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -27,18 +26,17 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Apply General Limiter to all API routes
 app.use("/api", generalLimiter);
 
-// --- MIDDLEWARE ---
-// Allow requests from your frontend (Update URLs when you deploy)
+// --- CORS CONFIGURATION ---
 app.use(
   cors({
     origin: [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "https://dd-tours-admin.vercel.app",
-      "http://localhost:5175",
+      "http://localhost:5173", // Admin Local
+      "http://localhost:5174", // Customer Local
+      "http://localhost:5175", // (Just in case)
+      "https://dd-tours-admin.vercel.app", // Admin Live
+      // Add your Customer Vercel URL here later!
     ],
     credentials: true,
   }),
@@ -50,6 +48,7 @@ app.use(express.json());
 app.use("/api/admin", adminRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/bookings", bookingRoutes); // <--- ADD THIS BACK
 
 // Root Route
 app.get("/", (req, res) => {
