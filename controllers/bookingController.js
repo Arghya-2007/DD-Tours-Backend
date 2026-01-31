@@ -1,6 +1,6 @@
 // Import the initialized Firestore instance
 // Make sure this points to where you initialized 'admin.firestore()'
-const { db } = require("../firebase");
+const { db } = require("../config/firebase");
 
 // ==========================================
 // 1. CREATE BOOKING
