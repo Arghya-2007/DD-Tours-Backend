@@ -1,13 +1,64 @@
-const { admin } = require("../config/firebase");
+// controllers/userController.js
+const { admin, db } = require("../config/firebase"); // <--- Added 'db' here
 
-// --- 1. GET USERS (With Pagination) ---
+// ==========================================
+//  CUSTOMER ROUTES (For the Public Website)
+// ==========================================
+
+// 1. Get MY Profile (Read from Firestore)
+const getUserProfile = async (req, res) => {
+  try {
+    const userId = req.user.uid; // From token
+
+    // Check Firestore for extra details (Aadhar, Address, etc.)
+    const userDoc = await db.collection("users").doc(userId).get();
+
+    if (!userDoc.exists) {
+      return res.status(200).json({}); // Return empty if no profile yet
+    }
+
+    res.status(200).json(userDoc.data());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// 2. Update/Complete MY Profile (Write to Firestore)
+const updateUserProfile = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { phone, address, dob, aadharNo, panNo } = req.body;
+
+    // We only save the fields we allow (No name/email changes)
+    const updateData = {
+      phone,
+      address,
+      dob,
+      aadharNo,
+      panNo,
+      isProfileComplete: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // { merge: true } ensures we don't delete other data
+    await db.collection("users").doc(userId).set(updateData, { merge: true });
+
+    res.status(200).json({ message: "Profile Updated", user: updateData });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ==========================================
+//  ADMIN ROUTES (For Your Dashboard)
+// ==========================================
+
+// 3. GET ALL USERS (With Pagination)
 const getAllUsers = async (req, res) => {
   try {
-    // Read query params from the URL (e.g., ?limit=10&nextPageToken=...)
     const maxResults = parseInt(req.query.limit) || 10;
     const pageToken = req.query.nextPageToken || undefined;
 
-    // Firebase Admin SDK supports native pagination
     const listUsersResult = await admin.auth().listUsers(maxResults, pageToken);
 
     const users = listUsersResult.users.map((userRecord) => ({
@@ -21,10 +72,9 @@ const getAllUsers = async (req, res) => {
       },
     }));
 
-    // Send back data AND the token for the next page
     res.status(200).json({
       users,
-      nextPageToken: listUsersResult.pageToken, // This is null if no more users exist
+      nextPageToken: listUsersResult.pageToken,
     });
   } catch (error) {
     console.error("Error listing users:", error);
@@ -34,7 +84,7 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-// --- 2. DELETE USER ---
+// 4. DELETE USER
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -48,4 +98,9 @@ const deleteUser = async (req, res) => {
   }
 };
 
-module.exports = { getAllUsers, deleteUser };
+module.exports = {
+  getAllUsers,
+  deleteUser,
+  getUserProfile,
+  updateUserProfile,
+};
