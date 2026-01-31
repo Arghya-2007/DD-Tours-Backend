@@ -13,6 +13,7 @@ const bookingRoutes = require("./routes/bookingRoutes"); // <--- ADD THIS BACK
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
 
 // --- SECURITY MIDDLEWARE ---
 app.use(helmet());

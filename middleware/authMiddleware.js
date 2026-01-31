@@ -1,62 +1,67 @@
-const jwt = require("jsonwebtoken");
+// middleware/authMiddleware.js
+const jwt = require("jsonwebtoken"); // For Admins
+const { admin } = require("../config/firebase"); // For Users (FIXED IMPORT)
 
+// ==========================================
+// 1. VERIFY USER (Firebase Token from Google)
+// ==========================================
 const verifyUser = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    console.log("🔹 [Auth Debug] Received Header:", authHeader ? "YES" : "NO");
+
+    // Debugging (Optional, remove later)
+    // console.log("🔹 [Auth Debug] Checking User Token...");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.log("❌ [Auth Debug] No Bearer token found.");
       return res
         .status(401)
-        .json({ message: "Access Denied. No valid token format." });
+        .json({ message: "Access Denied. No token provided." });
     }
 
     const token = authHeader.split(" ")[1];
-    // console.log("🔹 [Auth Debug] Token:", token); // Uncomment to see the full token (long!)
 
-    // ATTEMPT VERIFICATION
+    // ✅ VERIFY WITH FIREBASE (Fixes "admin is not defined")
     const decodedToken = await admin.auth().verifyIdToken(token);
 
-    console.log("✅ [Auth Debug] Verified User:", decodedToken.email);
-    req.user = decodedToken;
+    req.user = decodedToken; // Contains uid, email, picture
     next();
   } catch (error) {
-    console.error(
-      "❌ [Auth Debug] Verification Failed:",
-      error.code,
-      error.message,
-    );
-    res.status(401).json({ message: "Invalid Token", error: error.message });
+    console.error("❌ User Verification Failed:", error.message);
+    res
+      .status(401)
+      .json({ message: "Invalid User Token", error: error.message });
   }
 };
 
+// ==========================================
+// 2. VERIFY ADMIN (Custom JWT from your Server)
+// ==========================================
 const verifyAdmin = (req, res, next) => {
-  // 1. Get the token from the header (Authorization: Bearer <token>)
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res
-      .status(401)
-      .json({ message: "Access Denied: No Token Provided" });
-  }
-
-  const token = authHeader.split(" ")[1];
-
   try {
-    // 2. Verify the token using your Secret Key
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ message: "Access Denied: No Token Provided" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    // ✅ VERIFY WITH YOUR SECRET KEY
+    // Make sure JWT_SECRET is set in your .env file!
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3. Check if the decoded payload has the admin role
+    // Check Role
     if (decoded.role !== "admin") {
       return res.status(403).json({ message: "Access Denied: Not an Admin" });
     }
 
-    // 4. Attach user info to request and proceed
     req.user = decoded;
     next();
   } catch (error) {
-    return res.status(403).json({ message: "Invalid or Expired Token" });
+    console.error("❌ Admin Verification Failed:", error.message);
+    return res.status(403).json({ message: "Invalid or Expired Admin Token" });
   }
 };
 
