@@ -66,11 +66,9 @@ const getUserBookings = async (req, res) => {
   try {
     const uid = req.user.uid;
 
-    // Query: "Select * from bookings where userId == [current_user]"
     const snapshot = await db
       .collection("bookings")
       .where("userId", "==", uid)
-      .orderBy("createdAt", "desc") // Show newest first
       .get();
 
     if (snapshot.empty) {
@@ -80,6 +78,11 @@ const getUserBookings = async (req, res) => {
     const bookings = [];
     snapshot.forEach((doc) => {
       bookings.push({ id: doc.id, ...doc.data() });
+    });
+    bookings.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0);
+      const dateB = new Date(b.createdAt || 0);
+      return dateB - dateA;
     });
 
     res.status(200).json(bookings);
