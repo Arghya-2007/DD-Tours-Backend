@@ -9,7 +9,7 @@ const {
   updateTrip,
   deleteTrip,
 } = require("../controllers/tripController");
-const verifyAdmin = require("../middleware/authMiddleware");
+const { verifyAdmin } = require("../middleware/authMiddleware");
 
 // Multer Setup (Memory Storage)
 const storage = multer.memoryStorage();
