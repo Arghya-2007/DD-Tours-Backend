@@ -17,7 +17,7 @@ const upload = multer({ storage: storage });
 
 // --- PUBLIC ROUTES (No Token Needed) ---
 // Anyone can view trips
-router.get("/all", getAllTrips);
+router.get("/", getAllTrips);
 router.get("/:id", getTripById);
 
 // --- SECURE ADMIN ROUTES (Token Required) ---
