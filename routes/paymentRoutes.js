@@ -2,6 +2,7 @@ const express = require("express");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
+const { sendBookingConfirmation } = require("../services/emailServices");
 const router = express.Router();
 
 // --- 1. ROBUST FIREBASE INITIALIZATION ---
