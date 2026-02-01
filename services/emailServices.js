@@ -1,16 +1,29 @@
 // backend/services/emailService.js
 const nodemailer = require("nodemailer");
 
+// 👇 UPDATED TRANSPORTER CONFIGURATION
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com", // Explicit Host
+  port: 587, // Explicit Port (Standard for Cloud)
+  secure: false, // Must be false for port 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // 🛡️ Extra fix for cloud environments
+  tls: {
+    ciphers: "SSLv3",
+    rejectUnauthorized: false,
+  },
+  // ⏱️ Increase timeout to prevent early disconnects
+  connectionTimeout: 10000,
 });
 
 const sendBookingConfirmation = async (toEmail, booking) => {
-  if (!toEmail) return;
+  if (!toEmail) {
+    console.log("❌ No email provided for notification.");
+    return;
+  }
 
   const mailOptions = {
     from: `"DD Tours & Travels" <${process.env.EMAIL_USER}>`,
@@ -21,7 +34,6 @@ const sendBookingConfirmation = async (toEmail, booking) => {
         <div style="background-color: #ea580c; padding: 20px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 24px;">MISSION CONFIRMED</h1>
         </div>
-
         <div style="padding: 20px; color: #333;">
           <p style="font-size: 16px;">Hi <strong>${booking.name}</strong>,</p>
           <p>Your expedition is officially secured. Pack your bags!</p>
@@ -40,10 +52,8 @@ const sendBookingConfirmation = async (toEmail, booking) => {
             <a href="https://dd-customers.vercel.app/profile" style="background-color: #ea580c; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">View Mission Brief</a>
           </div>
         </div>
-
         <div style="background-color: #f1f1f1; padding: 10px; text-align: center; font-size: 12px; color: #666;">
           <p>&copy; ${new Date().getFullYear()} DD Tours & Travels. All rights reserved.</p>
-          <p>Ranaghat, West Bengal, India</p>
         </div>
       </div>
     `,
@@ -53,7 +63,9 @@ const sendBookingConfirmation = async (toEmail, booking) => {
     await transporter.sendMail(mailOptions);
     console.log("📧 Confirmation Email Sent to:", toEmail);
   } catch (error) {
-    console.error("❌ Email Failed:", error);
+    console.error("❌ Email Failed:", error.message);
+    // Note: We do NOT throw the error here so the booking doesn't fail
+    // just because the email failed.
   }
 };
 
