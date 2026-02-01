@@ -1,27 +1,30 @@
 // backend/services/emailService.js
 const nodemailer = require("nodemailer");
 
-// 👇 UPDATED TRANSPORTER CONFIGURATION
+// 👇 UPDATED TRANSPORTER WITH IPv4 ENFORCEMENT
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com", // Explicit Host
-  port: 587, // Explicit Port (Standard for Cloud)
-  secure: false, // Must be false for port 587
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  // 🛡️ Extra fix for cloud environments
   tls: {
     ciphers: "SSLv3",
     rejectUnauthorized: false,
   },
-  // ⏱️ Increase timeout to prevent early disconnects
+  // 🛡️ CRITICAL FIXES FOR CLOUD TIMEOUTS
+  family: 4, // <--- Forces IPv4 (Fixes ETIMEDOUT on Render/AWS)
+  logger: true, // <--- Logs the SMTP handshake to console
+  debug: true, // <--- Include debug info in logs
   connectionTimeout: 10000,
+  socketTimeout: 10000,
 });
 
 const sendBookingConfirmation = async (toEmail, booking) => {
   if (!toEmail) {
-    console.log("❌ No email provided for notification.");
+    console.log("❌ No email provided.");
     return;
   }
 
@@ -61,11 +64,9 @@ const sendBookingConfirmation = async (toEmail, booking) => {
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log("📧 Confirmation Email Sent to:", toEmail);
+    console.log("✅ Confirmation Email Sent to:", toEmail);
   } catch (error) {
     console.error("❌ Email Failed:", error.message);
-    // Note: We do NOT throw the error here so the booking doesn't fail
-    // just because the email failed.
   }
 };
 
