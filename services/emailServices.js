@@ -1,8 +1,10 @@
-const nodemailer = require("nodemailer");
-const { google } = require("googleapis"); // You might need: npm install googleapis
+// backend/services/emailService.js
+const { google } = require("googleapis");
+const MailComposer = require("nodemailer/lib/mail-composer");
+require("dotenv").config();
 
-// Create the transporter ONCE (More efficient)
-const createTransporter = async () => {
+// 1. Setup OAuth2 Client (Same as before)
+const getGmailService = () => {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -13,39 +15,25 @@ const createTransporter = async () => {
     refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
   });
 
-  // Get a fresh Access Token automatically
-  const accessToken = await new Promise((resolve, reject) => {
-    oauth2Client.getAccessToken((err, token) => {
-      if (err) {
-        console.error("❌ Google OAuth Failed to Refresh Token:", err);
-        reject("Failed to create access token");
-      }
-      resolve(token);
-    });
-  });
-
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      type: "OAuth2",
-      user: process.env.EMAIL_USER,
-      accessToken,
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-    },
-  });
-
-  return transporter;
+  return google.gmail({ version: "v1", auth: oauth2Client });
 };
 
+// 2. Helper to Encode Email for Google's API
+const encodeMessage = (message) => {
+  return Buffer.from(message)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+};
+
+// 3. The Main Sending Function
 const sendBookingConfirmation = async (toEmail, booking) => {
-  if (!toEmail) return;
-
   try {
-    const transporter = await createTransporter();
+    const gmail = getGmailService();
 
-    const mailOptions = {
+    // A. Use Nodemailer's library JUST to build the email structure
+    const mailGenerator = new MailComposer({
       from: `"DD Tours" <${process.env.EMAIL_USER}>`,
       to: toEmail,
       subject: `🏔️ Mission Confirmed: ${booking.title}`,
@@ -61,6 +49,7 @@ const sendBookingConfirmation = async (toEmail, booking) => {
             <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
               <p style="margin: 5px 0;"><strong>Trip:</strong> ${booking.title}</p>
               <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date(booking.date).toLocaleDateString()}</p>
+              <p style="margin: 5px 0;"><strong>Seats:</strong> ${booking.seats}</p>
               <p style="margin: 5px 0;"><strong>Total Paid:</strong> ₹${Number(booking.amount).toLocaleString()}</p>
               <p style="margin: 5px 0;"><strong>Transaction ID:</strong> <span style="font-family: monospace;">${booking.paymentId}</span></p>
             </div>
@@ -71,12 +60,25 @@ const sendBookingConfirmation = async (toEmail, booking) => {
           </div>
         </div>
       `,
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ OAuth Email Sent! ID:", info.messageId);
+    // B. Compile the email to a Raw String
+    const rawMessage = await mailGenerator.compile().build();
+
+    // C. SEND via HTTP API (Port 443 - Bypasses Render Firewall)
+    const res = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: encodeMessage(rawMessage),
+      },
+    });
+
+    console.log("✅ OAuth Email Sent via HTTP API! ID:", res.data.id);
   } catch (error) {
-    console.error("❌ Email Error:", error);
+    console.error("❌ Email API Error:", error.message);
+    if (error.response) {
+      console.error("   Google Details:", error.response.data);
+    }
   }
 };
 
