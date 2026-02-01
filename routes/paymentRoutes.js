@@ -92,6 +92,25 @@ router.post("/verify", async (req, res) => {
 
       console.log("✅ Booking Saved to DB. ID:", docRef.id);
 
+      try {
+        const emailData = {
+          name: bookingDetails.userDetails?.fullName || "Explorer",
+          title: bookingDetails.tripTitle,
+          date: bookingDetails.bookingDate,
+          seats: bookingDetails.seats,
+          amount: bookingDetails.totalAmount,
+          paymentId: razorpay_payment_id,
+        };
+
+        // We trigger it but don't hold up the response
+        sendBookingConfirmation(
+          bookingDetails.userDetails?.email || bookingDetails.userEmail,
+          emailData,
+        );
+      } catch (err) {
+        console.error("Email trigger failed:", err);
+      }
+
       // 4. Send Success to Frontend
       res.json({
         success: true,
