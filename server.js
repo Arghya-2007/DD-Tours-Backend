@@ -8,7 +8,8 @@ const rateLimit = require("express-rate-limit");
 const adminRoutes = require("./routes/adminRoutes");
 const tripRoutes = require("./routes/tripRoutes");
 const userRoutes = require("./routes/userRoutes");
-const bookingRoutes = require("./routes/bookingRoutes"); // <--- ADD THIS BACK
+const bookingRoutes = require("./routes/bookingRoutes");
+const paymentRoutes = require("./routes/paymentRoutes"); // <--- 1. IMPORT THIS
 
 dotenv.config();
 
@@ -35,10 +36,9 @@ app.use(
     origin: [
       "http://localhost:5173", // Admin Local
       "http://localhost:5174", // Customer Local
-      "http://localhost:5175", // (Just in case)
+      "http://localhost:5175",
       "https://dd-tours-admin.vercel.app", // Admin Live
-      "https://dd-customers.vercel.app",
-      // Add your Customer Vercel URL here later!
+      "https://dd-customers.vercel.app", // Make sure this matches your deployed Vercel URL
     ],
     credentials: true,
   }),
@@ -50,7 +50,8 @@ app.use(express.json());
 app.use("/api/admin", adminRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/bookings", bookingRoutes); // <--- ADD THIS BACK
+app.use("/api/bookings", bookingRoutes);
+app.use("/api/payments", paymentRoutes); // <--- 2. ADD THIS ROUTE
 
 // Root Route
 app.get("/", (req, res) => {
