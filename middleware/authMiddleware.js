@@ -1,16 +1,13 @@
-// middleware/authMiddleware.js
 const jwt = require("jsonwebtoken"); // For Admins
-const { admin } = require("../config/firebase"); // For Users (FIXED IMPORT)
+const { admin } = require("../config/firebase"); // For Users
 
 // ==========================================
-// 1. VERIFY USER (Firebase Token from Google)
+// 1. VERIFY USER (Firebase Token)
 // ==========================================
+// This checks if a normal user is logged in via Google/Email
 const verifyUser = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-
-    // Debugging (Optional, remove later)
-    // console.log("🔹 [Auth Debug] Checking User Token...");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res
@@ -20,7 +17,7 @@ const verifyUser = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
-    // ✅ VERIFY WITH FIREBASE (Fixes "admin is not defined")
+    // ✅ VERIFY WITH FIREBASE
     const decodedToken = await admin.auth().verifyIdToken(token);
 
     req.user = decodedToken; // Contains uid, email, picture
@@ -34,8 +31,9 @@ const verifyUser = async (req, res, next) => {
 };
 
 // ==========================================
-// 2. VERIFY ADMIN (Custom JWT from your Server)
+// 2. VERIFY ADMIN (Custom JWT)
 // ==========================================
+// This checks if an Admin is logged in via your Secret Panel
 const verifyAdmin = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -49,10 +47,8 @@ const verifyAdmin = (req, res, next) => {
     const token = authHeader.split(" ")[1];
 
     // ✅ VERIFY WITH YOUR SECRET KEY
-    // Make sure JWT_SECRET is set in your .env file!
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Check Role
     if (decoded.role !== "admin") {
       return res.status(403).json({ message: "Access Denied: Not an Admin" });
     }
@@ -65,4 +61,11 @@ const verifyAdmin = (req, res, next) => {
   }
 };
 
+// ==========================================
+// 3. THE FIX: DEFINE AUTHENTICATE USER
+// ==========================================
+// We simply point this to verifyUser, since that's what your routes expect.
+const authenticateUser = verifyUser;
+
+// Now all 3 names exist, so the export will work!
 module.exports = { verifyAdmin, verifyUser, authenticateUser };
