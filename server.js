@@ -9,12 +9,12 @@ const adminRoutes = require("./routes/adminRoutes");
 const tripRoutes = require("./routes/tripRoutes");
 const userRoutes = require("./routes/userRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
-const paymentRoutes = require("./routes/paymentRoutes"); // <--- 1. IMPORT THIS
+const paymentRoutes = require("./routes/paymentRoutes");
 
 dotenv.config();
 
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); // Crucial for Render
 
 // --- SECURITY MIDDLEWARE ---
 app.use(helmet());
@@ -30,16 +30,16 @@ const generalLimiter = rateLimit({
 
 app.use("/api", generalLimiter);
 
-// --- CORS CONFIGURATION ---
+// --- CORS CONFIGURATION (Perfect!) ---
 app.use(
   cors({
     origin: [
-      "http://localhost:5173", // Admin Local
-      "http://localhost:5174", // Customer Local
+      "http://localhost:5173",
+      "http://localhost:5174",
       "http://localhost:5175",
-      "https://ddtours.in",
-      "https://www.ddtours.in",
-      "https://admin.ddtours.in",
+      "https://ddtours.in", // User Site
+      "https://www.ddtours.in", // User Site (www)
+      "https://admin.ddtours.in", // Admin Site
     ],
     credentials: true,
   }),
@@ -47,12 +47,13 @@ app.use(
 
 app.use(express.json());
 
-// --- ROUTES ---
-app.use("/api/admin", adminRoutes);
-app.use("/api/trips", tripRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/bookings", bookingRoutes);
-app.use("/api/payments", paymentRoutes); // <--- 2. ADD THIS ROUTE
+// --- ROUTES (Updated to match Frontend) ---
+// We add "/v1" here so it matches the request: /api/v1/trips
+app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/trips", tripRoutes);
+app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/bookings", bookingRoutes);
+app.use("/api/v1/payments", paymentRoutes);
 
 // Root Route
 app.get("/", (req, res) => {
