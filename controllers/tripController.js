@@ -27,7 +27,18 @@ const deleteFromCloudinary = async (publicId) => {
   }
 };
 
-// --- 1. CREATE Trip (With New Fields) ---
+// --- Helper: Safe JSON Parse ---
+const parseArrayField = (fieldValue) => {
+  if (!fieldValue) return [];
+  try {
+    return JSON.parse(fieldValue);
+  } catch (e) {
+    // Fallback for simple comma-separated string
+    return fieldValue.split(",").map((item) => item.trim());
+  }
+};
+
+// --- 1. CREATE Trip (Updated with New Fields) ---
 const createTrip = async (req, res) => {
   try {
     const {
@@ -36,8 +47,11 @@ const createTrip = async (req, res) => {
       price,
       duration,
       location,
-      expectedDate,
+      fixedDate, // New
+      expectedMonth, // New
+      bookingEndsIn, // New
       includedItems,
+      placesCovered, // New
     } = req.body;
 
     // Validation
@@ -52,16 +66,9 @@ const createTrip = async (req, res) => {
         .json({ message: "Title and Price are required fields." });
     }
 
-    // Parse 'includedItems' (Comes as string from FormData)
-    let parsedItems = [];
-    if (includedItems) {
-      try {
-        parsedItems = JSON.parse(includedItems);
-      } catch (e) {
-        // Fallback for simple comma-separated string
-        parsedItems = includedItems.split(",").map((item) => item.trim());
-      }
-    }
+    // Parse Arrays
+    const parsedIncludedItems = parseArrayField(includedItems);
+    const parsedPlacesCovered = parseArrayField(placesCovered);
 
     // Upload Images
     const uploadPromises = req.files.map((file) =>
@@ -80,8 +87,16 @@ const createTrip = async (req, res) => {
       price: Number(price),
       duration: duration || "TBD",
       location: location || "TBD",
-      expectedDate: expectedDate || "", // New Field
-      includedItems: parsedItems, // New Field (Array)
+
+      // New Scheduling Fields
+      fixedDate: fixedDate || "",
+      expectedMonth: expectedMonth || "",
+      bookingEndsIn: bookingEndsIn || "",
+
+      // Arrays
+      includedItems: parsedIncludedItems,
+      placesCovered: parsedPlacesCovered,
+
       images: images,
       createdAt: new Date().toISOString(),
     };
@@ -138,7 +153,7 @@ const getTripById = async (req, res) => {
   }
 };
 
-// --- 4. UPDATE Trip (With New Fields) ---
+// --- 4. UPDATE Trip (Updated with New Fields) ---
 const updateTrip = async (req, res) => {
   try {
     const { id } = req.params;
@@ -148,20 +163,18 @@ const updateTrip = async (req, res) => {
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ message: "Trip not found" });
 
-    // Parse includedItems if present
+    // Parse Arrays if present
     if (updates.includedItems) {
-      try {
-        updates.includedItems = JSON.parse(updates.includedItems);
-      } catch (e) {
-        updates.includedItems = updates.includedItems
-          .split(",")
-          .map((item) => item.trim());
-      }
+      updates.includedItems = parseArrayField(updates.includedItems);
+    }
+    if (updates.placesCovered) {
+      updates.placesCovered = parseArrayField(updates.placesCovered);
     }
 
     // Handle Image Replacement
     if (req.files && req.files.length > 0) {
       const tripData = doc.data();
+
       // Delete old images
       if (tripData.images && Array.isArray(tripData.images)) {
         for (const img of tripData.images) await deleteFromCloudinary(img.id);
@@ -179,8 +192,10 @@ const updateTrip = async (req, res) => {
         url: result.secure_url,
         id: result.public_id,
       }));
+
+      // Cleanup legacy fields
       updates.imageUrl = "";
-      updates.imageId = ""; // Clean legacy fields
+      updates.imageId = "";
     }
 
     if (updates.price) updates.price = Number(updates.price);
