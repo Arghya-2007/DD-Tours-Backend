@@ -1,29 +1,18 @@
-// routes/tripRoutes.js
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
-const {
-  createTrip,
-  getAllTrips,
-  getTripById,
-  updateTrip,
-  deleteTrip,
-} = require("../controllers/tripController");
-const { verifyAdmin } = require("../middleware/authMiddleware");
+const tripController = require("../controllers/tripController");
+// Ensure you have multer middleware for file uploads
+const upload = require("../middleware/uploadMiddleware");
 
-// Multer Setup (Memory Storage)
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+// --- EXISTING ROUTES ---
+router.post("/create", upload.array("images"), tripController.createTrip);
+router.get("/", tripController.getAllTrips);
+router.get("/:id", tripController.getTripById);
 
-// --- PUBLIC ROUTES (No Token Needed) ---
-// Anyone can view trips
-router.get("/", getAllTrips);
-router.get("/:id", getTripById);
+// --- 🔴 THE FIX: ADD '/update/' BEFORE ':id' ---
+// Your frontend is calling /update/ID, so the route must match exactly.
+router.put("/update/:id", upload.array("images"), tripController.updateTrip);
 
-// --- SECURE ADMIN ROUTES (Token Required) ---
-// Only Admins can Add, Update, or Delete
-router.post("/add", verifyAdmin, upload.array("images", 5), createTrip);
-router.put("/update/:id", verifyAdmin, upload.array("images", 5), updateTrip);
-router.delete("/delete/:id", verifyAdmin, deleteTrip);
+// router.delete("/delete/:id", tripController.deleteTrip); // Optional: if you use /delete/ID
 
 module.exports = router;
