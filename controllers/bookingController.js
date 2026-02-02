@@ -75,10 +75,45 @@ const getUserBookings = async (req, res) => {
       return res.status(200).json([]);
     }
 
-    const bookings = [];
-    snapshot.forEach((doc) => {
-      bookings.push({ id: doc.id, ...doc.data() });
-    });
+    // Use Promise.all to fetch Trip Details for every booking in parallel
+    const bookings = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const bookingData = doc.data();
+        let tripData = {};
+
+        // Fetch live trip data if tripId exists
+        if (bookingData.tripId) {
+          try {
+            const tripDoc = await db
+              .collection("trips")
+              .doc(bookingData.tripId)
+              .get();
+            if (tripDoc.exists) {
+              tripData = tripDoc.data();
+            }
+          } catch (err) {
+            console.warn(`Could not fetch trip for booking ${doc.id}`, err);
+          }
+        }
+
+        // Return merged data
+        return {
+          id: doc.id,
+          ...bookingData,
+          // Attach live trip info here so frontend can check 'trip.fixedDate'
+          trip: {
+            title: tripData.title || bookingData.tripTitle, // Fallback to booking snapshot
+            fixedDate: tripData.fixedDate || null, // CRITICAL: The live date
+            expectedMonth: tripData.expectedMonth || null, // CRITICAL: The live month
+            duration: tripData.duration || "",
+            location: tripData.location || "",
+            images: tripData.images || [],
+          },
+        };
+      }),
+    );
+
+    // Sort by Created Date (Newest First)
     bookings.sort((a, b) => {
       const dateA = new Date(a.createdAt || 0);
       const dateB = new Date(b.createdAt || 0);
