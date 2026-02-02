@@ -1,19 +1,43 @@
 const { db } = require("../config/firebase");
-const { FieldValue } = require("firebase-admin/firestore");
 
-// --- 1. SUBMIT REVIEW ---
+// --- CREATE REVIEW ---
 const createReview = async (req, res) => {
   try {
-    const { tripId, rating, comment } = req.body;
-    const userId = req.user.uid;
-    const userName = req.user.name || "Explorer";
-    const userPhoto = req.user.picture || "";
+    console.log("📝 [Review Debug] Incoming Review Payload:", req.body);
 
-    if (!tripId || !rating) {
-      return res.status(400).json({ message: "Rating and Trip ID required." });
+    const { tripId, rating, comment } = req.body;
+
+    // 1. Safety Checks
+    if (!req.user || !req.user.uid) {
+      return res.status(401).json({ message: "User not authenticated." });
+    }
+    if (!tripId) {
+      return res.status(400).json({ message: "Trip ID is missing." });
+    }
+    if (!rating) {
+      return res.status(400).json({ message: "Rating is required." });
     }
 
-    // 1. Save the Review
+    // 2. Verify Trip Exists BEFORE saving review
+    const tripRef = db.collection("trips").doc(tripId);
+    const tripDoc = await tripRef.get();
+
+    if (!tripDoc.exists) {
+      console.error(
+        `❌ [Review Debug] Trip ID ${tripId} not found in database.`,
+      );
+      return res
+        .status(404)
+        .json({ message: "Trip not found. Cannot review." });
+    }
+
+    // 3. Prepare User Data (Handle missing names/photos)
+    const userId = req.user.uid;
+    const userName =
+      req.user.name || req.user.email?.split("@")[0] || "Explorer";
+    const userPhoto = req.user.picture || "";
+
+    // 4. Save Review
     const reviewData = {
       tripId,
       userId,
@@ -25,9 +49,10 @@ const createReview = async (req, res) => {
     };
 
     await db.collection("reviews").add(reviewData);
+    console.log("✅ [Review Debug] Review saved to 'reviews' collection.");
 
-    // 2. AGGREGATION: Recalculate Trip Average
-    // We fetch all reviews for this trip to get the math right
+    // 5. AGGREGATION: Recalculate Trip Average
+    // We fetch all reviews for this specific trip
     const reviewsSnapshot = await db
       .collection("reviews")
       .where("tripId", "==", tripId)
@@ -37,26 +62,41 @@ const createReview = async (req, res) => {
     let reviewCount = 0;
 
     reviewsSnapshot.forEach((doc) => {
-      totalStars += doc.data().rating;
-      reviewCount++;
+      const data = doc.data();
+      if (data.rating) {
+        totalStars += Number(data.rating);
+        reviewCount++;
+      }
     });
 
     const newAverage =
       reviewCount > 0 ? (totalStars / reviewCount).toFixed(1) : 0;
+    console.log(
+      `📊 [Review Debug] New Stats -> Avg: ${newAverage}, Count: ${reviewCount}`,
+    );
 
-    // 3. Update the TRIP Document (This makes the 'All Trips' page fast)
-    await db
-      .collection("trips")
-      .doc(tripId)
-      .update({
+    // 6. Update the TRIP Document with new stats
+    // We use .set with merge: true to avoid crashes if something is weird
+    await tripRef.set(
+      {
         averageRating: Number(newAverage),
         totalRatings: reviewCount,
-      });
+      },
+      { merge: true },
+    );
 
-    res.status(201).json({ message: "Review posted!", newAverage });
+    console.log("✅ [Review Debug] Trip stats updated successfully.");
+
+    res.status(201).json({
+      message: "Review posted successfully!",
+      newAverage: Number(newAverage),
+      totalRatings: reviewCount,
+    });
   } catch (error) {
-    console.error("Error posting review:", error);
-    res.status(500).json({ message: "Failed to post review" });
+    console.error("🔥 [Review Debug] CRITICAL ERROR:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
