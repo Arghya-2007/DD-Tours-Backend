@@ -2,18 +2,33 @@ const express = require("express");
 const router = express.Router();
 const reviewController = require("../controllers/reviewController");
 
-// 🔴 CHANGE THIS LINE:
-// Remove { } if your middleware is exported directly
-// Also, verify the file name is actually "authMiddleware.js"
-const authenticateUser = require("../middleware/authMiddleware");
+// --- 🛠️ FIX: SMART IMPORT FOR MIDDLEWARE ---
+// We try to require the file
+const authMiddleware = require("../middleware/authMiddleware");
 
-// Debugging: This will print to your console if they are still undefined
-if (!authenticateUser)
-  console.error("❌ Error: 'authenticateUser' is undefined.");
-if (!reviewController.createReview)
-  console.error("❌ Error: 'createReview' is undefined.");
+// We determine which part is the actual function
+// 1. Try named exports (authenticateUser, verifyToken, protect)
+// 2. Fallback to the default export (authMiddleware)
+const protect =
+  authMiddleware.authenticateUser ||
+  authMiddleware.verifyToken ||
+  authMiddleware.protect ||
+  authMiddleware;
 
-// POST /api/v1/reviews/add
-router.post("/add", authenticateUser, reviewController.createReview);
+// --- 🔍 DEBUGGING (Check your server logs if it crashes again) ---
+if (typeof protect !== "function") {
+  console.error(
+    "❌ FATAL ERROR: Auth Middleware is not a function. Received:",
+    protect,
+  );
+}
+if (!reviewController || typeof reviewController.createReview !== "function") {
+  console.error(
+    "❌ FATAL ERROR: Controller 'createReview' is missing. Check reviewController.js exports.",
+  );
+}
+
+// --- ROUTES ---
+router.post("/add", protect, reviewController.createReview);
 
 module.exports = router;
