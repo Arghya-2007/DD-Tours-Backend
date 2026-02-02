@@ -1,6 +1,7 @@
 // controllers/tripController.js
 const { db } = require("../config/firebase");
 const cloudinary = require("../config/cloudinary");
+const { FieldValue } = require("firebase-admin/firestore"); // Required for clean deletion
 
 // --- Helper: Upload ONE file to Cloudinary ---
 const uploadToCloudinary = (buffer) => {
@@ -31,6 +32,8 @@ const deleteFromCloudinary = async (publicId) => {
 const parseArrayField = (fieldValue) => {
   if (!fieldValue) return [];
   try {
+    // If it's already an array (e.g. sent as raw JSON), return it
+    if (Array.isArray(fieldValue)) return fieldValue;
     return JSON.parse(fieldValue);
   } catch (e) {
     // Fallback for simple comma-separated string
@@ -38,7 +41,7 @@ const parseArrayField = (fieldValue) => {
   }
 };
 
-// --- 1. CREATE Trip (Updated with New Fields) ---
+// --- 1. CREATE Trip ---
 const createTrip = async (req, res) => {
   try {
     const {
@@ -47,11 +50,11 @@ const createTrip = async (req, res) => {
       price,
       duration,
       location,
-      fixedDate, // New
-      expectedMonth, // New
-      bookingEndsIn, // New
+      fixedDate,
+      expectedMonth,
+      bookingEndsIn,
       includedItems,
-      placesCovered, // New
+      placesCovered,
     } = req.body;
 
     // Validation
@@ -60,7 +63,8 @@ const createTrip = async (req, res) => {
         .status(400)
         .json({ message: "At least one image is required" });
     }
-    if (!title || !price) {
+    // Fix: Allow price to be 0
+    if (!title || price === undefined || price === "") {
       return res
         .status(400)
         .json({ message: "Title and Price are required fields." });
@@ -88,7 +92,7 @@ const createTrip = async (req, res) => {
       duration: duration || "TBD",
       location: location || "TBD",
 
-      // New Scheduling Fields
+      // Scheduling Fields
       fixedDate: fixedDate || "",
       expectedMonth: expectedMonth || "",
       bookingEndsIn: bookingEndsIn || "",
@@ -123,6 +127,7 @@ const getAllTrips = async (req, res) => {
       .collection("trips")
       .orderBy("createdAt", "desc")
       .get();
+
     if (snapshot.empty) return res.status(200).json([]);
 
     const trips = [];
@@ -153,17 +158,24 @@ const getTripById = async (req, res) => {
   }
 };
 
-// --- 4. UPDATE Trip (Updated with New Fields) ---
+// --- 4. UPDATE Trip ---
 const updateTrip = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    // Clone body to avoid mutating req object
+    const updates = { ...req.body };
 
     const docRef = db.collection("trips").doc(id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ message: "Trip not found" });
 
-    // Parse Arrays if present
+    // --- SANITIZATION ---
+    // Prevent overwriting immutable fields
+    delete updates.id;
+    delete updates.createdAt;
+    delete updates._id;
+
+    // --- PARSING ---
     if (updates.includedItems) {
       updates.includedItems = parseArrayField(updates.includedItems);
     }
@@ -171,18 +183,27 @@ const updateTrip = async (req, res) => {
       updates.placesCovered = parseArrayField(updates.placesCovered);
     }
 
-    // Handle Image Replacement
+    // Fix: Handle Price=0 correctly
+    if (updates.price !== undefined && updates.price !== "") {
+      const parsedPrice = Number(updates.price);
+      if (!isNaN(parsedPrice)) {
+        updates.price = parsedPrice;
+      }
+    }
+
+    // --- IMAGE HANDLING ---
     if (req.files && req.files.length > 0) {
       const tripData = doc.data();
 
-      // Delete old images
+      // 1. Delete old images from Cloudinary
       if (tripData.images && Array.isArray(tripData.images)) {
         for (const img of tripData.images) await deleteFromCloudinary(img.id);
       } else if (tripData.imageId) {
+        // Handle legacy single image
         await deleteFromCloudinary(tripData.imageId);
       }
 
-      // Upload new images
+      // 2. Upload new images
       const uploadPromises = req.files.map((file) =>
         uploadToCloudinary(file.buffer),
       );
@@ -193,17 +214,21 @@ const updateTrip = async (req, res) => {
         id: result.public_id,
       }));
 
-      // Cleanup legacy fields
-      updates.imageUrl = "";
-      updates.imageId = "";
+      // 3. Clean up legacy database fields completely
+      updates.imageUrl = FieldValue.delete();
+      updates.imageId = FieldValue.delete();
     }
 
-    if (updates.price) updates.price = Number(updates.price);
-
     await docRef.update(updates);
-    res
-      .status(200)
-      .json({ message: "Trip updated successfully", id, ...updates });
+
+    // Fetch updated doc to return clean response (optional, but good practice)
+    const updatedDoc = await docRef.get();
+
+    res.status(200).json({
+      message: "Trip updated successfully",
+      id,
+      ...updatedDoc.data(),
+    });
   } catch (error) {
     console.error("Error updating trip:", error);
     res
@@ -221,6 +246,8 @@ const deleteTrip = async (req, res) => {
     if (!doc.exists) return res.status(404).json({ message: "Trip not found" });
 
     const tripData = doc.data();
+
+    // Clean up images from Cloudinary
     if (tripData.images && Array.isArray(tripData.images)) {
       for (const img of tripData.images) await deleteFromCloudinary(img.id);
     } else if (tripData.imageId) {
