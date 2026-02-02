@@ -83,68 +83,64 @@ const createBooking = async (req, res) => {
 // ==========================================
 const getUserBookings = async (req, res) => {
   try {
-    const uid = req.user.uid;
+    // Assuming you have middleware that adds user ID to req.user
+    const userId = req.user.uid;
 
-    const snapshot = await db
+    // 1. Fetch all bookings for this user
+    const bookingsSnapshot = await db
       .collection("bookings")
-      .where("userId", "==", uid)
+      .where("userId", "==", userId)
+      .orderBy("createdAt", "desc")
       .get();
 
-    if (snapshot.empty) {
+    if (bookingsSnapshot.empty) {
       return res.status(200).json([]);
     }
 
-    // Use Promise.all to fetch LIVE Trip Details for every booking
-    const bookings = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const bookingData = doc.data();
-        let tripData = {};
+    // 2. "Hydrate" the bookings with LIVE Trip Data
+    // We map over the bookings and fetch the corresponding Trip document for each one.
+    const bookingPromises = bookingsSnapshot.docs.map(async (doc) => {
+      const bookingData = doc.data();
 
-        // 1. Fetch the LATEST trip data (Admin updates live here)
-        if (bookingData.tripId) {
-          try {
-            const tripDoc = await db
-              .collection("trips")
-              .doc(bookingData.tripId)
-              .get();
-            if (tripDoc.exists) {
-              tripData = tripDoc.data();
-            }
-          } catch (err) {
-            console.warn("Trip fetch failed", err);
+      let liveTripDetails = {};
+
+      // If the booking has a tripId, fetch the latest data from 'trips' collection
+      if (bookingData.tripId) {
+        try {
+          const tripDoc = await db
+            .collection("trips")
+            .doc(bookingData.tripId)
+            .get();
+          if (tripDoc.exists) {
+            liveTripDetails = tripDoc.data();
           }
+        } catch (err) {
+          console.warn(
+            `Failed to fetch trip details for booking ${doc.id}`,
+            err,
+          );
         }
+      }
 
-        return {
-          id: doc.id,
-          ...bookingData,
-
-          // 2. DATA PATCHING: Handle legacy fields so frontend doesn't break
-          totalAmount: bookingData.totalAmount || bookingData.totalPrice,
-          bookingDate: bookingData.bookingDate || bookingData.tripDate,
-
-          // 3. INJECT LIVE DATA: This overrides the stale booking snapshot
-          // This allows the frontend 'trip.fixedDate' check to work instantly
-          trip: {
-            title: tripData.title || bookingData.tripTitle,
-            fixedDate: tripData.fixedDate || null, // <--- LIVE DATE
-            expectedMonth: tripData.expectedMonth || null, // <--- LIVE MONTH
-            duration: tripData.duration || "",
-            location: tripData.location || "",
-            images: tripData.images || [],
-          },
-        };
-      }),
-    );
-
-    // Sort Newest First
-    bookings.sort((a, b) => {
-      const dateA = new Date(a.createdAt || 0);
-      const dateB = new Date(b.createdAt || 0);
-      return dateB - dateA;
+      // 3. Construct the response
+      return {
+        id: doc.id,
+        ...bookingData,
+        // We embed the LIVE trip object here.
+        // This ensures the frontend gets the CURRENT status, not the old one.
+        trip: {
+          title: liveTripDetails.title || bookingData.tripTitle,
+          status: liveTripDetails.status || "upcoming", // <--- THIS IS WHAT YOU NEED
+          fixedDate: liveTripDetails.fixedDate,
+          bookingDeadline: liveTripDetails.bookingDeadline,
+        },
+      };
     });
 
-    res.status(200).json(bookings);
+    // Wait for all the parallel fetches to complete
+    const hydratedBookings = await Promise.all(bookingPromises);
+
+    res.status(200).json(hydratedBookings);
   } catch (error) {
     console.error("Error fetching user bookings:", error);
     res
