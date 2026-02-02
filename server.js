@@ -37,8 +37,9 @@ app.use(
       "http://localhost:5173", // Admin Local
       "http://localhost:5174", // Customer Local
       "http://localhost:5175",
-      "https://dd-tours-admin.vercel.app", // Admin Live
-      "https://dd-customers.vercel.app", // Make sure this matches your deployed Vercel URL
+      "https://ddtours.in",
+      "https://www.ddtours.in",
+      "https://admin.ddtours.in",
     ],
     credentials: true,
   }),
