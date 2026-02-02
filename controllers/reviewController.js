@@ -105,21 +105,29 @@ const getRecentReviews = async (req, res) => {
     const snapshot = await db
       .collection("reviews")
       .orderBy("createdAt", "desc")
-      .limit(3) // Fetch top 3 latest reviews
+      .limit(6) // Increased limit to show more beautiful cards
       .get();
 
-    const reviews = [];
-
-    // We need to fetch the Trip Title for each review to give context
-    // This uses a parallel fetch pattern for speed
     const reviewPromises = snapshot.docs.map(async (doc) => {
       const data = doc.data();
+
+      // Default Values
       let tripTitle = "Unknown Expedition";
+      let tripImage =
+        "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2070";
 
       if (data.tripId) {
         const tripDoc = await db.collection("trips").doc(data.tripId).get();
         if (tripDoc.exists) {
-          tripTitle = tripDoc.data().title;
+          const tripData = tripDoc.data();
+          tripTitle = tripData.title;
+
+          // Robust Image Extraction (Same logic as frontend)
+          if (Array.isArray(tripData.images) && tripData.images.length > 0) {
+            tripImage = tripData.images[0].url;
+          } else if (tripData.imageUrl) {
+            tripImage = tripData.imageUrl;
+          }
         }
       }
 
@@ -127,11 +135,12 @@ const getRecentReviews = async (req, res) => {
         id: doc.id,
         ...data,
         tripTitle,
+        tripImage, // 🆕 Sending the image to frontend
       };
     });
 
-    const reviewsWithTitles = await Promise.all(reviewPromises);
-    res.status(200).json(reviewsWithTitles);
+    const reviewsWithDetails = await Promise.all(reviewPromises);
+    res.status(200).json(reviewsWithDetails);
   } catch (error) {
     console.error("Error fetching reviews:", error);
     res.status(500).json({ message: "Failed to fetch reviews" });
