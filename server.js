@@ -11,6 +11,7 @@ const userRoutes = require("./routes/userRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
+const blogRoutes = require("./routes/blogRoutes");
 
 dotenv.config();
 
@@ -56,6 +57,7 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/reviews", reviewRoutes);
+app.use("/api/v1/blogs", blogRoutes);
 
 // Root Route
 app.get("/", (req, res) => {
