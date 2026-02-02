@@ -30,5 +30,6 @@ if (!reviewController || typeof reviewController.createReview !== "function") {
 
 // --- ROUTES ---
 router.post("/add", protect, reviewController.createReview);
+router.get("/recent", reviewController.getRecentReviews);
 
 module.exports = router;

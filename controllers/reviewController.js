@@ -100,4 +100,42 @@ const createReview = async (req, res) => {
   }
 };
 
-module.exports = { createReview };
+const getRecentReviews = async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("reviews")
+      .orderBy("createdAt", "desc")
+      .limit(3) // Fetch top 3 latest reviews
+      .get();
+
+    const reviews = [];
+
+    // We need to fetch the Trip Title for each review to give context
+    // This uses a parallel fetch pattern for speed
+    const reviewPromises = snapshot.docs.map(async (doc) => {
+      const data = doc.data();
+      let tripTitle = "Unknown Expedition";
+
+      if (data.tripId) {
+        const tripDoc = await db.collection("trips").doc(data.tripId).get();
+        if (tripDoc.exists) {
+          tripTitle = tripDoc.data().title;
+        }
+      }
+
+      return {
+        id: doc.id,
+        ...data,
+        tripTitle,
+      };
+    });
+
+    const reviewsWithTitles = await Promise.all(reviewPromises);
+    res.status(200).json(reviewsWithTitles);
+  } catch (error) {
+    console.error("Error fetching reviews:", error);
+    res.status(500).json({ message: "Failed to fetch reviews" });
+  }
+};
+
+module.exports = { createReview, getRecentReviews };
