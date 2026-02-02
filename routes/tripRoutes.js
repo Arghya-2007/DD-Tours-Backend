@@ -1,18 +1,51 @@
 const express = require("express");
 const router = express.Router();
 const tripController = require("../controllers/tripController");
-// Ensure you have multer middleware for file uploads
+
+// ⚠️ IMPORTANT: Ensure this file exists at src/middleware/uploadMiddleware.js
+// If you get "Cannot find module", you need to create this file first.
 const upload = require("../middleware/uploadMiddleware");
 
-// --- EXISTING ROUTES ---
-router.post("/create", upload.array("images"), tripController.createTrip);
+// ==========================================
+// 1. CREATE (POST)
+// ==========================================
+// URL: /api/v1/trips/create
+// Matches: formData.append("images", file) in React
+router.post(
+  "/create",
+  upload.array("images"), // Middleware to handle file uploads
+  tripController.createTrip,
+);
+
+// ==========================================
+// 2. READ (GET)
+// ==========================================
+// URL: /api/v1/trips
 router.get("/", tripController.getAllTrips);
+
+// URL: /api/v1/trips/:id (e.g., /api/v1/trips/abc12345)
 router.get("/:id", tripController.getTripById);
 
-// --- 🔴 THE FIX: ADD '/update/' BEFORE ':id' ---
-// Your frontend is calling /update/ID, so the route must match exactly.
-router.put("/update/:id", upload.array("images"), tripController.updateTrip);
+// ==========================================
+// 3. UPDATE (PUT)
+// ==========================================
+// URL: /api/v1/trips/update/:id
+// Matches your Frontend error: ".../trips/update/iJICh..."
+router.put(
+  "/update/:id",
+  upload.array("images"), // Middleware to handle new images if uploaded
+  tripController.updateTrip,
+);
 
-// router.delete("/delete/:id", tripController.deleteTrip); // Optional: if you use /delete/ID
+// ==========================================
+// 4. DELETE (DELETE)
+// ==========================================
+// URL: /api/v1/trips/delete/:id
+// We explicitly add '/delete/' to match your likely Frontend pattern
+router.delete("/delete/:id", tripController.deleteTrip);
+
+// Fallback: Also support standard REST delete just in case
+// URL: /api/v1/trips/:id
+router.delete("/:id", tripController.deleteTrip);
 
 module.exports = router;
