@@ -101,6 +101,9 @@ const createTrip = async (req, res) => {
       includedItems: parsedIncludedItems,
       placesCovered: parsedPlacesCovered,
 
+      bookingDeadline: req.body.bookingDeadline || null,
+      status: "upcoming",
+
       images: images,
       createdAt: new Date().toISOString(),
     };
@@ -182,7 +185,12 @@ const updateTrip = async (req, res) => {
     if (updates.placesCovered) {
       updates.placesCovered = parseArrayField(updates.placesCovered);
     }
-
+    if (updates.bookingDeadline) {
+      updates.bookingDeadline = updates.bookingDeadline;
+    }
+    if (updates.status) {
+      updates.status = updates.status;
+    }
     // Fix: Handle Price=0 correctly
     if (updates.price !== undefined && updates.price !== "") {
       const parsedPrice = Number(updates.price);
