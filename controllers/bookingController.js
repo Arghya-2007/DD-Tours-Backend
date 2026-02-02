@@ -2,11 +2,11 @@
 const { db } = require("../config/firebase");
 
 // ==========================================
-// 1. CREATE BOOKING (User)
+// 1. CREATE BOOKING (User - Offline / Pay on Arrival)
 // ==========================================
 const createBooking = async (req, res) => {
   try {
-    const uid = req.user.uid; // Secured by verifyUser middleware
+    const uid = req.user.uid;
     const { tripId, seats, userDetails } = req.body;
 
     if (!tripId || !seats) {
@@ -15,7 +15,7 @@ const createBooking = async (req, res) => {
         .json({ message: "Trip ID and Number of Seats are required." });
     }
 
-    // 1. Fetch Trip details to ensure it exists and get valid Price
+    // 1. Fetch Trip details
     const tripRef = db.collection("trips").doc(tripId);
     const tripDoc = await tripRef.get();
 
@@ -25,42 +25,61 @@ const createBooking = async (req, res) => {
 
     const tripData = tripDoc.data();
 
-    // 2. Calculate Total Price (Server-side calculation is safer)
+    // 2. Calculate Total Price
     const pricePerPerson = Number(tripData.price);
     const totalAmount = pricePerPerson * Number(seats);
 
-    // 3. Construct Booking Object
+    // 3. Determine Date & Fix Status
+    // Priority: Fixed Date > Expected Month > TBD
+    let finalDate = "TBD";
+    let isFixed = false;
+
+    if (tripData.fixedDate) {
+      finalDate = tripData.fixedDate;
+      isFixed = true;
+    } else if (tripData.expectedMonth) {
+      finalDate = tripData.expectedMonth;
+      isFixed = false;
+    }
+
+    // 4. Construct Booking Object (STANDARDIZED SCHEMA)
+    // Now matches exactly what Razorpay/Online flow saves
     const newBooking = {
       userId: uid,
       tripId: tripId,
-      tripTitle: tripData.title, // Snapshot title in case it changes later
-      tripDate: tripData.expectedDate || "TBD",
+      tripTitle: tripData.title,
+
+      // Standardized Fields
+      bookingDate: finalDate, // Was 'tripDate'
+      totalAmount: totalAmount, // Was 'totalPrice'
+      isFixedDate: isFixed, // New Field for Logic
+
       seats: Number(seats),
-      totalPrice: totalAmount,
-      userDetails: userDetails || {}, // Name, Phone sent from frontend form
-      status: "pending", // Default status
+      userDetails: userDetails || {},
+      status: "pending",
+      paymentMethod: "pay_on_arrival",
+      paymentStatus: "pending",
       createdAt: new Date().toISOString(),
     };
 
-    // 4. Save to 'bookings' collection
+    // 5. Save
     const docRef = await db.collection("bookings").add(newBooking);
 
     res.status(201).json({
       message: "Booking created successfully!",
-      id: docRef.id,
-      data: newBooking,
+      bookingId: docRef.id,
+      ...newBooking,
     });
   } catch (error) {
     console.error("Error creating booking:", error);
-    res.status(500).json({
-      message: "Failed to create booking",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({ message: "Failed to create booking", error: error.message });
   }
 };
 
 // ==========================================
-// 2. GET MY BOOKINGS (User)
+// 2. GET MY BOOKINGS (User - With Live Trip Sync)
 // ==========================================
 const getUserBookings = async (req, res) => {
   try {
@@ -75,13 +94,13 @@ const getUserBookings = async (req, res) => {
       return res.status(200).json([]);
     }
 
-    // Use Promise.all to fetch Trip Details for every booking in parallel
+    // Use Promise.all to fetch LIVE Trip Details for every booking
     const bookings = await Promise.all(
       snapshot.docs.map(async (doc) => {
         const bookingData = doc.data();
         let tripData = {};
 
-        // Fetch live trip data if tripId exists
+        // 1. Fetch the LATEST trip data (Admin updates live here)
         if (bookingData.tripId) {
           try {
             const tripDoc = await db
@@ -92,19 +111,24 @@ const getUserBookings = async (req, res) => {
               tripData = tripDoc.data();
             }
           } catch (err) {
-            console.warn(`Could not fetch trip for booking ${doc.id}`, err);
+            console.warn("Trip fetch failed", err);
           }
         }
 
-        // Return merged data
         return {
           id: doc.id,
           ...bookingData,
-          // Attach live trip info here so frontend can check 'trip.fixedDate'
+
+          // 2. DATA PATCHING: Handle legacy fields so frontend doesn't break
+          totalAmount: bookingData.totalAmount || bookingData.totalPrice,
+          bookingDate: bookingData.bookingDate || bookingData.tripDate,
+
+          // 3. INJECT LIVE DATA: This overrides the stale booking snapshot
+          // This allows the frontend 'trip.fixedDate' check to work instantly
           trip: {
-            title: tripData.title || bookingData.tripTitle, // Fallback to booking snapshot
-            fixedDate: tripData.fixedDate || null, // CRITICAL: The live date
-            expectedMonth: tripData.expectedMonth || null, // CRITICAL: The live month
+            title: tripData.title || bookingData.tripTitle,
+            fixedDate: tripData.fixedDate || null, // <--- LIVE DATE
+            expectedMonth: tripData.expectedMonth || null, // <--- LIVE MONTH
             duration: tripData.duration || "",
             location: tripData.location || "",
             images: tripData.images || [],
@@ -113,7 +137,7 @@ const getUserBookings = async (req, res) => {
       }),
     );
 
-    // Sort by Created Date (Newest First)
+    // Sort Newest First
     bookings.sort((a, b) => {
       const dateA = new Date(a.createdAt || 0);
       const dateB = new Date(b.createdAt || 0);
@@ -123,10 +147,9 @@ const getUserBookings = async (req, res) => {
     res.status(200).json(bookings);
   } catch (error) {
     console.error("Error fetching user bookings:", error);
-    res.status(500).json({
-      message: "Failed to fetch bookings",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({ message: "Failed to fetch bookings", error: error.message });
   }
 };
 
@@ -139,19 +162,25 @@ const getAllBookings = async (req, res) => {
       .collection("bookings")
       .orderBy("createdAt", "desc")
       .get();
-
     const bookings = [];
+
     snapshot.forEach((doc) => {
-      bookings.push({ id: doc.id, ...doc.data() });
+      // Basic normalization for Admin view as well
+      const data = doc.data();
+      bookings.push({
+        id: doc.id,
+        ...data,
+        totalAmount: data.totalAmount || data.totalPrice, // Normalize for Admin UI
+        bookingDate: data.bookingDate || data.tripDate, // Normalize for Admin UI
+      });
     });
 
     res.status(200).json(bookings);
   } catch (error) {
     console.error("Error fetching all bookings:", error);
-    res.status(500).json({
-      message: "Failed to fetch all bookings",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({ message: "Failed to fetch all bookings", error: error.message });
   }
 };
 
@@ -161,18 +190,16 @@ const getAllBookings = async (req, res) => {
 const updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // e.g., "confirmed", "cancelled"
+    const { status } = req.body;
 
-    if (!status) {
+    if (!status)
       return res.status(400).json({ message: "Status is required." });
-    }
 
     const bookingRef = db.collection("bookings").doc(id);
     const doc = await bookingRef.get();
 
-    if (!doc.exists) {
+    if (!doc.exists)
       return res.status(404).json({ message: "Booking not found." });
-    }
 
     await bookingRef.update({ status });
 
@@ -183,10 +210,9 @@ const updateBookingStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating booking status:", error);
-    res.status(500).json({
-      message: "Failed to update status",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({ message: "Failed to update status", error: error.message });
   }
 };
 
